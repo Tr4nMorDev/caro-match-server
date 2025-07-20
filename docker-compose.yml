@@ -27,14 +27,14 @@ services:
       timeout: 3s
       retries: 3
   
-  ollama:
-    image: ollama/ollama
-    container_name: ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama-data:/root/.ollama
-    restart: unless-stopped
+  # ollama:
+  #   image: ollama/ollama
+  #   container_name: ollama
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama-data:/root/.ollama
+  #   restart: unless-stopped
   # app:
   #   container_name: node-app
   #   build:
@@ -84,5 +84,5 @@ services:
 
 volumes:
   postgres-data:
-  ollama-data:
+  # ollama-data:
   # grafana-data:
