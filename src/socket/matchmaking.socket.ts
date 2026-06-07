@@ -1,111 +1,160 @@
-// src/socket/matchmaking.socket.ts
 import { Server, Socket } from "socket.io";
 import {
-  tryFindOpponent,
   createMatch,
+  findAvailableOpponent,
   isStillWaiting,
   removeUserFromQueue,
   enqueueUser,
+  withMatchmakingLock,
 } from "../services/matchmaking.service";
 import { checkGameResultFromBoard } from "../services/game.service";
 import redis from "../config/redis";
 import { scheduleTimeout } from "../utils/gameLogic";
 
 export function listAllConnectedSockets(io: Server) {
-  const socketsMap = io.sockets.sockets; // Map<socketId, Socket>
+  const socketsMap = io.sockets.sockets;
 
-  console.log(`🔌 Tổng số socket đang kết nối: ${socketsMap.size}`);
+  console.log(`Connected sockets: ${socketsMap.size}`);
   socketsMap.forEach((socket, socketId) => {
     const userId = socket.data.user?.id ?? "unknown";
-    console.log(`📡 Socket ID: ${socketId} - User ID: ${userId}`);
+    console.log(`Socket ID: ${socketId} - User ID: ${userId}`);
   });
 }
-// Hàm chính
+
 export function matchmakingSocket(io: Server) {
   io.on("connection", (socket: Socket) => {
     const user = socket.data.user;
-    console.log(`🔌 New connection: ${socket.id}`);
+    console.log(`New connection: ${socket.id}`);
     listAllConnectedSockets(io);
+
     socket.on("waiting", async () => {
       const userId = user.id;
-      // userSocketMap.set(userId, socket);
-      await redis.set(`socket:${userId}`, socket.id);
-      await enqueueUser(userId);
 
-      const opponentId = await tryFindOpponent(userId);
+      try {
+        await redis.set(`socket:${userId}`, socket.id);
 
-      if (opponentId) {
-        const match = await createMatch(userId, opponentId);
-        const opponentSocketId = await redis.get(`socket:${opponentId}`);
+        const result = await withMatchmakingLock(async () => {
+          const currentMatchId = await redis.get(`user:${userId}:matchId`);
+          if (currentMatchId) {
+            await removeUserFromQueue(userId);
+            return { type: "already_matched" as const };
+          }
 
-        const initialBoard = Array(400).fill(null);
-        const matchState = {
-          board: initialBoard,
-          turn: "X",
-          playerXId: match.playerXId,
-          playerOId: match.playerOId,
-          turnDeadline: Date.now() + 30_000,
-        };
+          await removeUserFromQueue(userId);
 
-        await redis.set(`match:${match.id}:state`, JSON.stringify(matchState));
-        await redis.set(`user:${userId}:matchId`, match.id.toString());
-        await redis.set(`user:${opponentId}:matchId`, match.id.toString());
+          const opponentId = await findAvailableOpponent(userId);
+          if (!opponentId) {
+            await enqueueUser(userId);
+            return { type: "waiting" as const };
+          }
 
-        await removeUserFromQueue(userId);
-        await removeUserFromQueue(opponentId);
+          await removeUserFromQueue(userId);
+          await removeUserFromQueue(opponentId);
 
-        socket.emit("matched", {
-          ...match,
-          youAre: match.playerXId === userId ? "X" : "O",
+          const match = await createMatch(userId, opponentId);
+          const initialBoard = Array(400).fill(null);
+          const matchState = {
+            board: initialBoard,
+            turn: "X",
+            playerXId: match.playerXId,
+            playerOId: match.playerOId,
+            turnDeadline: Date.now() + 30_000,
+          };
+
+          await redis.set(`match:${match.id}:state`, JSON.stringify(matchState));
+          await redis.set(`user:${userId}:matchId`, match.id.toString());
+          await redis.set(`user:${opponentId}:matchId`, match.id.toString());
+
+          return { type: "matched" as const, match, opponentId };
         });
-        if (opponentSocketId) {
-          io.to(opponentSocketId).emit("matched", {
+
+        if (result.type === "matched") {
+          const { match, opponentId } = result;
+          const opponentSocketId = await redis.get(`socket:${opponentId}`);
+
+          socket.emit("matched", {
             ...match,
-            youAre: match.playerXId === opponentId ? "X" : "O",
+            youAre: match.playerXId === userId ? "X" : "O",
           });
+
+          if (opponentSocketId) {
+            io.to(opponentSocketId).emit("matched", {
+              ...match,
+              youAre: match.playerXId === opponentId ? "X" : "O",
+            });
+          }
+
+          scheduleTimeout(match.id, io);
+          return;
         }
 
-        // ⏱ Bắt đầu đếm thời gian cho người chơi đầu tiên
-        scheduleTimeout(match.id, io);
-      } else {
-        setTimeout(async () => {
-          const stillWaiting = await isStillWaiting(userId);
-          if (stillWaiting) {
-            await removeUserFromQueue(userId);
-            socket.emit("timeout");
-          }
-        }, 5000);
+        if (result.type === "waiting") {
+          setTimeout(async () => {
+            const stillWaiting = await isStillWaiting(userId);
+            if (stillWaiting) {
+              await removeUserFromQueue(userId);
+              socket.emit("timeout");
+            }
+          }, 5000);
+        }
+      } catch (err: any) {
+        console.error("Matchmaking error:", err.message);
+        socket.emit("error", "Khong the ghep tran luc nay");
       }
     });
 
     socket.on("makeMove", async ({ matchId, index, symbol }) => {
       const userId = socket.data.user.id;
-      console.log(`🎮 User ${userId} move in match ${matchId} at index ${index} with ${symbol}`);
+      console.log(
+        `User ${userId} move in match ${matchId} at index ${index} with ${symbol}`
+      );
 
       const matchIdStr = await redis.get(`user:${userId}:matchId`);
       if (!matchIdStr) {
-        socket.emit("error", "Không tìm thấy matchId của bạn");
+        socket.emit("error", "Khong tim thay matchId cua ban");
+        return;
+      }
+
+      if (Number(matchIdStr) !== Number(matchId)) {
+        socket.emit("error", "MatchId khong hop le");
         return;
       }
 
       const matchStateStr = await redis.get(`match:${matchId}:state`);
       if (!matchStateStr) {
-        socket.emit("error", "Không tìm thấy trạng thái trận đấu");
+        socket.emit("error", "Khong tim thay trang thai tran dau");
         return;
       }
 
       const matchState = JSON.parse(matchStateStr);
       const { board, turn, playerXId, playerOId, turnDeadline } = matchState;
 
+      if (!Number.isInteger(index) || index < 0 || index >= board.length) {
+        socket.emit("error", "Index nuoc di khong hop le");
+        return;
+      }
+
+      if (symbol !== "X" && symbol !== "O") {
+        socket.emit("error", "Ky hieu quan co khong hop le");
+        return;
+      }
+
       if (Date.now() > turnDeadline) {
-        socket.emit("error", "Bạn đã hết thời gian đi");
+        socket.emit("error", "Ban da het thoi gian di");
         return;
       }
 
       const isUserX = userId === playerXId;
       const isUserO = userId === playerOId;
+      const expectedSymbol = isUserX ? "X" : isUserO ? "O" : null;
+
+      if (!expectedSymbol || symbol !== expectedSymbol) {
+        socket.emit("error", "Ky hieu quan co khong dung voi nguoi choi");
+        return;
+      }
+
       if ((turn === "X" && !isUserX) || (turn === "O" && !isUserO)) {
-        socket.emit("error", "Không đến lượt bạn");
+        socket.emit("error", "Khong den luot ban");
         return;
       }
 
@@ -153,22 +202,20 @@ export function matchmakingSocket(io: Server) {
           matchState.turnDeadline = Date.now() + 30_000;
           await redis.set(`match:${matchId}:state`, JSON.stringify(matchState));
 
-          // ⏱ Đặt lại timeout cho người chơi tiếp theo
           scheduleTimeout(matchId, io);
         }
       } catch (err: any) {
-        console.error("❌ Lỗi:", err.message);
+        console.error("Move error:", err.message);
         socket.emit("error", err.message);
       }
     });
 
     socket.on("timeout", async (userId) => {
-      console.log(`❌ timeout: ${socket.id}`);
-          const matchId = await redis.get(`user:${userId}:matchId`);
-          if (!matchId) {
-            // await handleMatchedUserDisconnect(userId, Number(matchId), io);
-            await redis.del(`socket:${userId}`);
-          }
+      console.log(`timeout: ${socket.id}`);
+      const matchId = await redis.get(`user:${userId}:matchId`);
+      if (!matchId) {
+        await redis.del(`socket:${userId}`);
+      }
     });
 
     socket.on("disconnect", async () => {
