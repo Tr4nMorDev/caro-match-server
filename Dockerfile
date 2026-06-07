@@ -20,9 +20,11 @@ RUN npx prisma generate
 
 # Build mã nguồn TypeScript
 RUN npm run build
+RUN cp src/generated/prisma/*linux-musl-openssl-3.0.x* dist/generated/prisma/
 
 
 COPY wait-for-it.sh /usr/local/bin/wait-for-it.sh
+RUN sed -i 's/\r$//' /usr/local/bin/wait-for-it.sh
 # Cho phép wait-for-it chạy được
 RUN chmod +x /usr/local/bin/wait-for-it.sh
 

@@ -27,37 +27,37 @@ services:
       timeout: 3s
       retries: 3
   
-  ollama:
-    image: ollama/ollama
-    container_name: ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama-data:/root/.ollama
-    restart: unless-stopped
-  # app:
-  #   container_name: node-app
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile
+  # ollama:
+  #   image: ollama/ollama
+  #   container_name: ollama
   #   ports:
-  #     - "3000:3000"
-  #   environment:
-  #     - POSTGRES_URL=${POSTGRES_URL}
-  #     - REDIS_URL=${REDIS_URL} 
-  #     - PORT=${PORT}
-  #     - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-  #     - JWT_SECRET=${JWT_SECRET}
-  #     - VITE={VITE}
-  #     - SERVER={SERVER}
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #   # command: node dist/server.js # Chạy file build JS từ TypeScript
+  #     - "11434:11434"
   #   volumes:
-  #     - /app/node_modules # Giữ node_modules trong container để không bị ghi đè
+  #     - ollama-data:/root/.ollama
+  #   restart: unless-stopped
+  app:
+    container_name: node-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - POSTGRES_URL=${POSTGRES_URL}
+      - REDIS_URL=${REDIS_URL} 
+      - PORT=${PORT}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - JWT_SECRET=${JWT_SECRET}
+      - VITE=${VITE}
+      - SERVER=${SERVER}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # command: node dist/server.js # Chạy file build JS từ TypeScript
+    volumes:
+      - /app/node_modules # Giữ node_modules trong container để không bị ghi đè
   # - .:/app # Mở dòng này khi phát triển, mount toàn bộ code vào container
 
   #Prometheus
