@@ -1,47 +1,59 @@
-import redis from "../config/redis";
 import { Server, Socket } from "socket.io";
-import matchAIService from "../services/matchAI.service";
+import redis from "../config/redis";
 import { checkIsWin } from "../utils/gameLogic";
-import axios from 'axios';
-export function playgamewithAI(io : Server) {
-    io.on("connection" ,(socket : Socket) => {
-        const user = socket.data.user;
-        console.log(`🔌 New connection: ${socket.id}`);
-        socket.on("move",async ({ index, board }) => {
-            console.log("move rồi đó bây giừo tới lượt AI")
-            console.log(index , board)
-            // lấy trạng thái socket của id đó và set nó 
-            await redis.set(`board:${user.id}`, JSON.stringify(board));
-            // check win
-            if (checkIsWin(board, index, "X")) {
-                return io.to(socket.id).emit("AImove", {
-                index,
-                symbol: "X",
-                isWin: true,
-                winnerId: user.id
-                });
-            }
-            const promt = "hello bạn nha =))";
-            // Gọi AI để lấy nước đi mới
-            const aiMoveIndex = await CallPromtAI(promt);
-            console.log(aiMoveIndex);
-            // nếu chưa win thì bắt đầu call Promt AI 
-            // check win tiếp 
-            
-            const aiWin = checkIsWin(board, aiMoveIndex, "O");
-            // emit tới người đang chơi 
-            // thời gian tối đa chơi game giữa 2 đứa đó là 30s 
-            // dữ kiện move là index chỉ mục , 
-        })
-    })
+
+export function playgamewithAI(io: Server) {
+  io.on("connection", (socket: Socket) => {
+    const user = socket.data.user;
+    console.log(`AI socket connected: ${socket.id}`);
+
+    socket.on("move", async ({ index, board }) => {
+      await redis.set(`board:${user.id}`, JSON.stringify(board));
+
+      if (checkIsWin(board, index, "X")) {
+        return io.to(socket.id).emit("AImove", {
+          index,
+          symbol: "X",
+          isWin: true,
+          winnerId: user.id,
+          nextTurn: null,
+        });
+      }
+
+      const aiMoveIndex = pickRandomMove(board);
+      if (aiMoveIndex === null) {
+        return io.to(socket.id).emit("AImove", {
+          index,
+          symbol: "X",
+          isWin: false,
+          isDraw: true,
+          nextTurn: null,
+        });
+      }
+
+      board[aiMoveIndex] = "O";
+      await redis.set(`board:${user.id}`, JSON.stringify(board));
+
+      const aiWin = checkIsWin(board, aiMoveIndex, "O");
+      io.to(socket.id).emit("AImove", {
+        index: aiMoveIndex,
+        symbol: "O",
+        isWin: aiWin,
+        winnerId: aiWin ? "AI" : null,
+        nextTurn: aiWin ? null : "X",
+      });
+    });
+  });
 }
 
-export async function CallPromtAI(prompt : string) {
-  const res = await axios.post('http://localhost:11434/api/generate', {
-    model: 'mistral',
-    prompt,
-    stream: false
-  });
-  return res.data.response;
+function pickRandomMove(board: (string | null)[]) {
+  const emptyIndexes = board
+    .map((cell, index) => (cell === null ? index : null))
+    .filter((index): index is number => index !== null);
+
+  if (emptyIndexes.length === 0) return null;
+
+  return emptyIndexes[Math.floor(Math.random() * emptyIndexes.length)];
 }
-export function handleTimeout (){}
+
+export function handleTimeout() {}

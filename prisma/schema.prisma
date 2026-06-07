@@ -21,7 +21,7 @@ model User {
   name     String
   email    String   @unique
   password String?
-  avatar   String?  @default("1.png")
+  avatar   String?  @default("/chibi/1.png")
    provider  AuthProvider @default(EMAIL)
 
   // Quan hệ với Match
@@ -31,6 +31,19 @@ model User {
   // Quan hệ với Game (X hoặc O)
   gamesAsX Game[] @relation("XPlayer")
   gamesAsO Game[] @relation("OPlayer")
+
+  rank Rank?
+}
+
+model Rank {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique
+  points    Int      @default(0)
+  title     String   @default("Rookie")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 enum MatchStatus {

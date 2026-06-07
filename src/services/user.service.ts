@@ -7,7 +7,7 @@ import dotenv from "dotenv";
 
 dotenv.config(); // đảm bảo biến môi trường được load từ .env
 
-const imagedefault = process.env.SERVER || "http://localhost:3000/1.png";
+const imagedefault = "/chibi/1.png";
 console.log(imagedefault);
 const JWT_SECRET = process.env.JWT_SECRET || "default_secret";
 const prisma = new PrismaClient();
@@ -54,6 +54,8 @@ export const registerUser = async ({
     },
   });
 
+  await createDefaultRank(newUser.id);
+
   return newUser;
 };
 
@@ -82,12 +84,37 @@ export const findOrCreateGoogleUser = async ({
         provider: AuthProvider.GOOGLE,
       },
     });
+    await createDefaultRank(user.id);
   }
 
   return user;
 };
 
+export const getUserProfile = async (userId: number): Promise<User | null> => {
+  return prisma.user.findUnique({ where: { id: userId } });
+};
+
+async function createDefaultRank(userId: number) {
+  await prisma.$executeRaw`
+    INSERT INTO "Rank" ("userId")
+    VALUES (${userId})
+    ON CONFLICT ("userId") DO NOTHING
+  `;
+}
+
+export const updateUserAvatar = async (
+  userId: number,
+  data: { avatar?: string; name?: string }
+): Promise<User> => {
+  return prisma.user.update({
+    where: { id: userId },
+    data,
+  });
+};
+
 export default {
   registerUser,
   findOrCreateGoogleUser,
+  getUserProfile,
+  updateUserAvatar,
 };

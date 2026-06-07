@@ -1,32 +1,74 @@
 import { RequestHandler } from "express";
+import { Server } from "socket.io";
 import redis from "../config/redis";
+import { removeUserFromQueue } from "../services/matchmaking.service";
 import { AuthenticatedRequest } from "../types/express";
-import { PrismaClient } from "../generated/prisma/client";
-import {
-  enqueueUser,
-  removeUserFromQueue,
-} from "../services/matchmaking.service";
-const prisma = new PrismaClient();
-const MATCH_QUEUE_KEY = "matchmaking_queue";
 
 export const startmatching: RequestHandler = async (req, res) => {
-  // await enqueueUser(id);
   return res.status(200).json({
     message: "Waiting for opponent...",
     next: "Connect to WebSocket to receive match updates",
   });
 };
+
 export const cancelmatching: RequestHandler = async (req, res) => {
   const { id } = (req as AuthenticatedRequest).user;
-  removeUserFromQueue(id);
+  await removeUserFromQueue(id);
+  await redis.del(`socket:${id}`);
+
   return res.status(200).json({
-    message: "Hủy tìm trận ...",
+    message: "Cancel matching",
   });
 };
+
 export const exitmatch: RequestHandler = async (req, res) => {
   const { id } = (req as AuthenticatedRequest).user;
+  const matchId = await redis.get(`user:${id}:matchId`);
+
+  await removeUserFromQueue(id);
+  await redis.del(`socket:${id}`);
+
+  if (!matchId) {
+    return res.status(200).json({
+      message: "Exit match",
+      cleaned: ["queue", "socket"],
+    });
+  }
+
+  const matchStateStr = await redis.get(`match:${matchId}:state`);
+  if (!matchStateStr) {
+    await redis.del(`user:${id}:matchId`);
+    return res.status(200).json({
+      message: "Exit match",
+      matchId,
+      cleaned: ["userMatch"],
+    });
+  }
+
+  const matchState = JSON.parse(matchStateStr);
+  const opponentId =
+    id === matchState.playerXId ? matchState.playerOId : matchState.playerXId;
+  const opponentSocketId = await redis.get(`socket:${opponentId}`);
+  const io = req.app.locals.io as Server | undefined;
+
+  if (io && opponentSocketId) {
+    io.to(opponentSocketId).emit("gameEnd", {
+      winnerId: opponentId,
+      isDraw: false,
+      reason: "opponent_exit",
+    });
+  }
+
+  await redis.del(`match:${matchId}:state`);
+  await redis.del(`user:${id}:matchId`);
+  await redis.del(`user:${opponentId}:matchId`);
+
   return res.status(200).json({
-    message: "Exit trận ",
+    message: "Exit match",
+    matchId,
+    opponentId,
+    cleaned: ["matchState", "userMatch", "opponentMatch", "socket"],
   });
 };
+
 export default { startmatching, cancelmatching, exitmatch };

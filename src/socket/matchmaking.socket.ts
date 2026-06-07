@@ -170,5 +170,16 @@ export function matchmakingSocket(io: Server) {
             await redis.del(`socket:${userId}`);
           }
     });
+
+    socket.on("disconnect", async () => {
+      const userId = user?.id;
+      if (!userId) return;
+
+      const socketId = await redis.get(`socket:${userId}`);
+      if (socketId === socket.id) {
+        await redis.del(`socket:${userId}`);
+      }
+      await removeUserFromQueue(userId);
+    });
   });
 }

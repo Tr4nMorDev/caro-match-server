@@ -35,6 +35,7 @@ async function startServer() {
       },
     });
     io.use(socketAuthMiddleware);
+    app.locals.io = io;
     listAllConnectedSockets(io);// check số lượng socket đang conect 
     // Gắn socket handlers
     matchmakingSocket(io);
