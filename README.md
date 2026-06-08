@@ -62,3 +62,21 @@ node dist/server.js
 | POST        | /auth/logout  | Đăng xuất                    |
 | GET         | /auth/signup  | Đăng kí                     |
 
+
+## Google Sheet tracking
+
+Set Google Sheets API service-account env vars to enable Google-login tracking:
+
+```env
+GOOGLE_SHEET_ID=your-sheet-id
+GOOGLE_SHEET_RANGE=Trang tính1!A:E
+GOOGLE_SERVICE_ACCOUNT_EMAIL=your-service-account@project.iam.gserviceaccount.com
+GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+```
+
+Share the Google Sheet with `GOOGLE_SERVICE_ACCOUNT_EMAIL` as editor. Endpoint `POST /api/tracking/google-login` appends one row directly through Google Sheets API:
+
+```txt
+email | location | ip | utm_source | utm_campaign
+```
+

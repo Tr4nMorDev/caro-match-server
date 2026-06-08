@@ -50,6 +50,10 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - VITE=${VITE}
       - SERVER=${SERVER}
+      - GOOGLE_SHEET_ID=${GOOGLE_SHEET_ID}
+      - GOOGLE_SHEET_RANGE=${GOOGLE_SHEET_RANGE}
+      - GOOGLE_SERVICE_ACCOUNT_EMAIL=${GOOGLE_SERVICE_ACCOUNT_EMAIL}
+      - GOOGLE_PRIVATE_KEY=${GOOGLE_PRIVATE_KEY}
     depends_on:
       postgres:
         condition: service_healthy

@@ -7,6 +7,7 @@ import {
   enqueueUser,
   withMatchmakingLock,
 } from "../services/matchmaking.service";
+import { finishGameByMatchId } from "../services/game-finish.service";
 import { checkGameResultFromBoard } from "../services/game.service";
 import redis from "../config/redis";
 import { scheduleTimeout } from "../utils/gameLogic";
@@ -194,6 +195,12 @@ export function matchmakingSocket(io: Server) {
             io.to(opponentSocketId).emit("gameEnd", gameEndPayload);
           }
 
+          await finishGameByMatchId({
+            matchId: Number(matchId),
+            winnerId,
+            boardState: matchState.board,
+          });
+
           await redis.del(`match:${matchId}:state`);
           await redis.del(`user:${userId}:matchId`);
           await redis.del(`user:${opponentId}:matchId`);
@@ -221,6 +228,42 @@ export function matchmakingSocket(io: Server) {
     socket.on("disconnect", async () => {
       const userId = user?.id;
       if (!userId) return;
+
+      const matchId = await redis.get(`user:${userId}:matchId`);
+      if (matchId) {
+        const matchStateStr = await redis.get(`match:${matchId}:state`);
+        if (matchStateStr) {
+          const matchState = JSON.parse(matchStateStr);
+          const opponentId =
+            userId === matchState.playerXId
+              ? matchState.playerOId
+              : matchState.playerXId;
+          const opponentSocketId = await redis.get(`socket:${opponentId}`);
+
+          if (opponentSocketId) {
+            io.to(opponentSocketId).emit("gameEnd", {
+              winnerId: opponentId,
+              isDraw: false,
+              reason: "opponent_disconnect",
+            });
+          }
+
+          await finishGameByMatchId({
+            matchId: Number(matchId),
+            winnerId: opponentId,
+            boardState: matchState.board,
+          });
+
+          await redis.del(`match:${matchId}:state`);
+          await redis.del(`user:${userId}:matchId`);
+          await redis.del(`user:${opponentId}:matchId`);
+        } else {
+          await finishGameByMatchId({
+            matchId: Number(matchId),
+          });
+          await redis.del(`user:${userId}:matchId`);
+        }
+      }
 
       const socketId = await redis.get(`socket:${userId}`);
       if (socketId === socket.id) {

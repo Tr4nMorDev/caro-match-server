@@ -1,5 +1,6 @@
 import { Server, Socket } from "socket.io";
 import redis from "../config/redis";
+import { finishGameByMatchId } from "../services/game-finish.service";
 export function checkWinner(
   board: ("X" | "O" | null)[],
   index: number,
@@ -87,6 +88,12 @@ export async function scheduleTimeout(matchId: number, io: Server) {
 
     if (loserSocketId) io.to(loserSocketId).emit("gameEnd", payload);
     if (winnerSocketId) io.to(winnerSocketId).emit("gameEnd", payload);
+
+    await finishGameByMatchId({
+      matchId,
+      winnerId,
+      boardState: state.board,
+    });
 
     await redis.del(`match:${matchId}:state`);
     await redis.del(`user:${loserId}:matchId`);

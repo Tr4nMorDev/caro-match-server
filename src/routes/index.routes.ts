@@ -6,6 +6,7 @@ import { verifyJwtToken } from "../middlewares/auth.middleware";
 import { verifyUnified } from "../middlewares/verifyUnified";
 import matchmakingController from "../controllers/matchmaking.controller";
 import matchAIController from "../controllers/matchAI.controller";
+import trackingController from "../controllers/tracking.controller";
 import { rateLimitMiddleware } from "../middlewares/rateLimit.middleware";
 import { metrics } from "../metrics";
 
@@ -32,6 +33,11 @@ router.post("/auth/signup", registerUser);
 router.post("/auth/google", verifyGoogleToken, authController.googleLogin);
 router.post("/auth/login", authController.login);
 router.post("/auth/logout", verifyJwtToken, authController.logout);
+router.post(
+  "/api/tracking/google-login",
+  verifyUnified,
+  trackingController.trackGoogleLogin
+);
 router.get("/api/user/me", verifyUnified, getCurrentUser);
 router.patch("/api/user/avatar", verifyUnified, updateAvatar);
 

@@ -1,6 +1,7 @@
 import { RequestHandler } from "express";
 import { Server } from "socket.io";
 import redis from "../config/redis";
+import { finishGameByMatchId } from "../services/game-finish.service";
 import { removeUserFromQueue } from "../services/matchmaking.service";
 import { AuthenticatedRequest } from "../types/express";
 
@@ -37,6 +38,9 @@ export const exitmatch: RequestHandler = async (req, res) => {
 
   const matchStateStr = await redis.get(`match:${matchId}:state`);
   if (!matchStateStr) {
+    await finishGameByMatchId({
+      matchId: Number(matchId),
+    });
     await redis.del(`user:${id}:matchId`);
     return res.status(200).json({
       message: "Exit match",
@@ -58,6 +62,12 @@ export const exitmatch: RequestHandler = async (req, res) => {
       reason: "opponent_exit",
     });
   }
+
+  await finishGameByMatchId({
+    matchId: Number(matchId),
+    winnerId: opponentId,
+    boardState: matchState.board,
+  });
 
   await redis.del(`match:${matchId}:state`);
   await redis.del(`user:${id}:matchId`);
