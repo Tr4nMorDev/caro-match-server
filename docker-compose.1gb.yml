@@ -1,0 +1,32 @@
+services:
+  postgres:
+    mem_limit: 384m
+    cpus: 0.4
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - effective_cache_size=192MB
+      - -c
+      - work_mem=2MB
+      - -c
+      - maintenance_work_mem=32MB
+      - -c
+      - max_connections=40
+
+  redis:
+    mem_limit: 128m
+    cpus: 0.2
+    command:
+      - redis-server
+      - --maxmemory
+      - 96mb
+      - --maxmemory-policy
+      - allkeys-lru
+
+  app:
+    mem_limit: 384m
+    cpus: 0.4
+    environment:
+      NODE_OPTIONS: --max-old-space-size=256
