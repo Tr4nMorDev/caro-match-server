@@ -7,7 +7,7 @@ import { verifyUnified } from "../middlewares/verifyUnified";
 import matchmakingController from "../controllers/matchmaking.controller";
 import matchAIController from "../controllers/matchAI.controller";
 import trackingController from "../controllers/tracking.controller";
-import { rateLimitMiddleware } from "../middlewares/rateLimit.middleware";
+import { signupRateLimitMiddleware } from "../middlewares/rateLimit.middleware";
 import { metrics } from "../metrics";
 
 import redis from "../config/redis";
@@ -15,7 +15,7 @@ import { match } from "node:assert";
 
 const router = express.Router();
 
-router.get("/", (req: Request, res: Response) => {
+router.get("/", (req: Request, res: Response) => {  
   res.send("Welcome to Caro Game API!");
 });
 
@@ -29,7 +29,7 @@ router.get("/redis-test", async (req, res) => {
   res.json({ val });
 });
 
-router.post("/auth/signup", registerUser);
+router.post("/auth/signup", signupRateLimitMiddleware, registerUser);
 router.post("/auth/google", verifyGoogleToken, authController.googleLogin);
 router.post("/auth/login", authController.login);
 router.post("/auth/logout", verifyJwtToken, authController.logout);
